@@ -1,0 +1,361 @@
+import {
+  randomBytes,
+  randomUUID,
+  scrypt as nodeScrypt,
+  timingSafeEqual,
+  createHash,
+} from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { promisify } from "node:util";
+
+const scrypt = promisify(nodeScrypt);
+const filePath =
+  process.env.AUTH_FILE || path.resolve(process.cwd(), "data/auth.json");
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+export type Role = "owner" | "editor" | "viewer";
+export type User = {
+  id: string;
+  email: string;
+  name: string;
+  workspaceId: string;
+  role: Role;
+  createdAt: string;
+};
+type StoredUser = User & { passwordHash: string; salt: string };
+type Session = { tokenHash: string; userId: string; expiresAt: string };
+type Invitation = {
+  tokenHash: string;
+  workspaceId: string;
+  email: string;
+  name: string;
+  role: Exclude<Role, "owner">;
+  createdAt: string;
+  expiresAt: string;
+};
+type ApiKey = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  prefix: string;
+  keyHash: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+};
+type AuthData = {
+  users: StoredUser[];
+  sessions: Session[];
+  workspaces: Array<{ id: string; name: string; createdAt: string }>;
+  invitations?: Invitation[];
+  apiKeys?: ApiKey[];
+};
+let queue = Promise.resolve();
+async function readData(): Promise<AuthData> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as AuthData;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return { users: [], sessions: [], workspaces: [], invitations: [] };
+    throw error;
+  }
+}
+async function writeData(data: AuthData) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const temporary = `${filePath}.${process.pid}.tmp`;
+  await writeFile(temporary, JSON.stringify(data, null, 2), "utf8");
+  await rename(temporary, filePath);
+}
+function serialized<T>(operation: () => Promise<T>): Promise<T> {
+  const next = queue.then(operation, operation);
+  queue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+function publicUser(user: StoredUser): User {
+  const { passwordHash: _hash, salt: _salt, ...safe } = user;
+  return safe;
+}
+function tokenHash(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+async function hashPassword(password: string, salt: string) {
+  const derived = (await scrypt(password, salt, 64)) as Buffer;
+  return derived.toString("hex");
+}
+function sessionToken() {
+  return randomBytes(32).toString("base64url");
+}
+function publicApiKey(key: ApiKey) {
+  const { keyHash: _hash, ...safe } = key;
+  return safe;
+}
+function addSession(data: AuthData, user: StoredUser) {
+  const token = sessionToken();
+  data.sessions = data.sessions.filter(
+    (session) => new Date(session.expiresAt).getTime() > Date.now(),
+  );
+  data.sessions.push({
+    tokenHash: tokenHash(token),
+    userId: user.id,
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString(),
+  });
+  return token;
+}
+function createUser(
+  data: AuthData,
+  email: string,
+  name: string,
+  role: Role,
+  workspaceId: string,
+  password: string,
+) {
+  const salt = randomBytes(16).toString("hex");
+  const user: StoredUser = {
+    id: randomUUID(),
+    email: email.trim().toLowerCase(),
+    name: name.trim(),
+    workspaceId,
+    role,
+    createdAt: new Date().toISOString(),
+    salt,
+    passwordHash: "",
+  };
+  return hashPassword(password, salt).then((passwordHash) => ({
+    ...user,
+    passwordHash,
+  }));
+}
+export const auth = {
+  register: (email: string, password: string, name: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const normalized = email.trim().toLowerCase();
+      if (data.users.some((user) => user.email === normalized))
+        throw new Error("EMAIL_ALREADY_REGISTERED");
+      const user = await createUser(
+        data,
+        normalized,
+        name,
+        "owner",
+        randomUUID(),
+        password,
+      );
+      data.users.push(user);
+      data.workspaces.push({
+        id: user.workspaceId,
+        name: `${user.name} workspace`,
+        createdAt: user.createdAt,
+      });
+      const token = addSession(data, user);
+      await writeData(data);
+      return { user: publicUser(user), token };
+    }),
+  login: (email: string, password: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const user = data.users.find(
+        (item) => item.email === email.trim().toLowerCase(),
+      ); // ユーザーが存在しない場合もダミーの salt でハッシュ計算を行い、応答時間から登録有無を推測できないようにする。保存済みハッシュの長さが壊れていても timingSafeEqual の例外で 500 にしない。
+      const expected = user
+        ? Buffer.from(user.passwordHash, "hex")
+        : Buffer.alloc(64);
+      const actual = Buffer.from(
+        await hashPassword(password, user?.salt || "0".repeat(32)),
+        "hex",
+      );
+      const matches =
+        expected.length === actual.length && timingSafeEqual(expected, actual);
+      if (!user || !matches) throw new Error("INVALID_CREDENTIALS");
+      const token = addSession(data, user);
+      await writeData(data);
+      return { user: publicUser(user), token };
+    }),
+  // 読み取り専用の照会は直列化キューを通さない。書き込みは rename で原子的であり、古い版か新しい版のどちらか完全なファイルを読むため安全。キューを通すと scrypt 実行中のログイン等が全リクエストの認証を止めてしまう。
+  userFromToken: async (token?: string) => {
+    if (!token) return null;
+    const data = await readData();
+    const session = data.sessions.find(
+      (item) =>
+        item.tokenHash === tokenHash(token) &&
+        new Date(item.expiresAt).getTime() > Date.now(),
+    );
+    const user =
+      session && data.users.find((item) => item.id === session.userId);
+    return user ? publicUser(user) : null;
+  },
+  logout: (token?: string) =>
+    serialized(async () => {
+      if (!token) return;
+      const data = await readData();
+      data.sessions = data.sessions.filter(
+        (session) => session.tokenHash !== tokenHash(token),
+      );
+      await writeData(data);
+    }),
+  members: async (workspaceId: string) =>
+    (await readData()).users
+      .filter((user) => user.workspaceId === workspaceId)
+      .map(publicUser),
+  workspace: async (workspaceId: string) =>
+    (await readData()).workspaces.find((item) => item.id === workspaceId) ||
+    null,
+  invite: (
+    workspaceId: string,
+    email: string,
+    name: string,
+    role: Exclude<Role, "owner">,
+  ) =>
+    serialized(async () => {
+      const data = await readData();
+      const normalized = email.trim().toLowerCase();
+      if (data.users.some((user) => user.email === normalized))
+        throw new Error("EMAIL_ALREADY_REGISTERED");
+      const token = sessionToken();
+      const now = new Date().toISOString();
+      const invitation: Invitation = {
+        tokenHash: tokenHash(token),
+        workspaceId,
+        email: normalized,
+        name: name.trim(),
+        role,
+        createdAt: now,
+        expiresAt: new Date(Date.now() + INVITE_TTL_MS).toISOString(),
+      };
+      data.invitations = [
+        ...(data.invitations || []).filter(
+          (item) => new Date(item.expiresAt).getTime() > Date.now(),
+        ),
+        invitation,
+      ];
+      await writeData(data);
+      return {
+        email: invitation.email,
+        name: invitation.name,
+        role: invitation.role,
+        expiresAt: invitation.expiresAt,
+        token,
+      };
+    }),
+  acceptInvite: (token: string, password: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const invitations = data.invitations || [];
+      const index = invitations.findIndex(
+        (item) =>
+          item.tokenHash === tokenHash(token) &&
+          new Date(item.expiresAt).getTime() > Date.now(),
+      );
+      if (index < 0) throw new Error("INVITATION_NOT_FOUND");
+      const invitation = invitations[index];
+      if (data.users.some((user) => user.email === invitation.email))
+        throw new Error("EMAIL_ALREADY_REGISTERED");
+      const user = await createUser(
+        data,
+        invitation.email,
+        invitation.name,
+        invitation.role,
+        invitation.workspaceId,
+        password,
+      );
+      data.users.push(user);
+      data.invitations = invitations.filter(
+        (_, itemIndex) => itemIndex !== index,
+      );
+      const session = addSession(data, user);
+      await writeData(data);
+      return { user: publicUser(user), token: session };
+    }),
+  updateRole: (
+    workspaceId: string,
+    userId: string,
+    role: Exclude<Role, "owner">,
+  ) =>
+    serialized(async () => {
+      const data = await readData();
+      const user = data.users.find(
+        (item) => item.id === userId && item.workspaceId === workspaceId,
+      );
+      if (!user) return null; // owner を降格できるとワークスペースから owner が消え、招待・APIキー・削除などの管理操作が誰にもできなくなるため拒否する（メンバー削除側の owner ガードと対にする）。
+      if (user.role === "owner") throw new Error("OWNER_ROLE_CANNOT_CHANGE");
+      user.role = role;
+      await writeData(data);
+      return publicUser(user);
+    }),
+  remove: (workspaceId: string, userId: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const user = data.users.find(
+        (item) => item.id === userId && item.workspaceId === workspaceId,
+      );
+      if (!user || user.role === "owner") return false;
+      data.users = data.users.filter((item) => item.id !== userId);
+      data.sessions = data.sessions.filter(
+        (session) => session.userId !== userId,
+      );
+      await writeData(data);
+      return true;
+    }),
+  createApiKey: (workspaceId: string, name: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const raw = `mj_${sessionToken()}`;
+      const key: ApiKey = {
+        id: randomUUID(),
+        workspaceId,
+        name: name.trim(),
+        prefix: raw.slice(0, 12),
+        keyHash: tokenHash(raw),
+        createdAt: new Date().toISOString(),
+      };
+      data.apiKeys = [...(data.apiKeys || []), key];
+      await writeData(data);
+      return { key: publicApiKey(key), token: raw };
+    }),
+  listApiKeys: async (workspaceId: string) =>
+    (await readData()).apiKeys
+      ?.filter((key) => key.workspaceId === workspaceId)
+      .map(publicApiKey) || [],
+  revokeApiKey: (workspaceId: string, id: string) =>
+    serialized(async () => {
+      const data = await readData();
+      const key = (data.apiKeys || []).find(
+        (item) =>
+          item.id === id && item.workspaceId === workspaceId && !item.revokedAt,
+      );
+      if (!key) return null;
+      key.revokedAt = new Date().toISOString();
+      await writeData(data);
+      return publicApiKey(key);
+    }),
+  userFromApiKey: async (token?: string) => {
+    if (!token?.startsWith("mj_")) return null;
+    const data = await readData();
+    const key = (data.apiKeys || []).find(
+      (item) => item.keyHash === tokenHash(token) && !item.revokedAt,
+    );
+    if (!key) return null;
+    const user = data.users.find(
+      (item) => item.workspaceId === key.workspaceId,
+    );
+    if (!user) return null; // lastUsedAt の更新で毎リクエスト auth.json を全書き換えしない。1時間以上古い場合だけ、最新データを読み直してから直列化して更新する（並行する登録・失効を上書きしないため再読込する）。
+    if (
+      !key.lastUsedAt ||
+      Date.now() - new Date(key.lastUsedAt).getTime() > 60 * 60 * 1000
+    ) {
+      void serialized(async () => {
+        const fresh = await readData();
+        const freshKey = (fresh.apiKeys || []).find(
+          (item) => item.id === key.id && !item.revokedAt,
+        );
+        if (!freshKey) return;
+        freshKey.lastUsedAt = new Date().toISOString();
+        await writeData(fresh);
+      }).catch(() => undefined);
+    }
+    return publicUser(user);
+  },
+};

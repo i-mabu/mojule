@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+coverage
+# ローカルの保存データ（auth.json にはパスワードハッシュやセッションが入る）をイメージへ混入させない
+data/
