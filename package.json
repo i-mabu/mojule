@@ -1,6 +1,7 @@
 {
   "name": "mojuleagent",
   "version": "0.1.0",
+  "description": "知識・機能・推論をモジュール化し、組み合わせでAIを設計する独立型エージェント",
   "private": true,
   "type": "module",
   "scripts": {

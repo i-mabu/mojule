@@ -55,7 +55,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error("PORT must be an integer between 1 and 65535");
 app.disable("x-powered-by");
 app.use(helmet({ contentSecurityPolicy: false }));
-app.use((req, res, next) => {
+app.use((_req, res, next) => {
   const requestId = randomUUID();
   res.setHeader("x-request-id", requestId);
   res.locals.requestId = requestId;

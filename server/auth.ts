@@ -106,7 +106,6 @@ function addSession(data: AuthData, user: StoredUser) {
   return token;
 }
 function createUser(
-  data: AuthData,
   email: string,
   name: string,
   role: Role,
@@ -137,7 +136,6 @@ export const auth = {
       if (data.users.some((user) => user.email === normalized))
         throw new Error("EMAIL_ALREADY_REGISTERED");
       const user = await createUser(
-        data,
         normalized,
         name,
         "owner",
@@ -254,7 +252,6 @@ export const auth = {
       if (data.users.some((user) => user.email === invitation.email))
         throw new Error("EMAIL_ALREADY_REGISTERED");
       const user = await createUser(
-        data,
         invitation.email,
         invitation.name,
         invitation.role,
