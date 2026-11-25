@@ -4,54 +4,16 @@
 
 特定のプラットフォームや専用SDKに依存しない、最小構成のMVPです。
 
-## 🚀 起動
+| 項目 | 内容 |
+|---|---|
+| バージョン | v0.1.0 |
+| 状態 | 開発中 |
+| 入手先 | GitHub（i-mabu/mojule） |
+| 実装 | TypeScript（Express / React + Vite） |
+| 更新履歴 | [CHANGELOG.md](CHANGELOG.md) |
 
-```bash
-pnpm install
-cp .env.example .env
-pnpm dev
-```
+## 📖 概要
 
-`http://localhost:3000` を開いてください。`OPENAI_API_KEY`が空でもローカルデモモードで動作します。
-
-## 🤖 LLM接続
-
-OpenAI互換のHTTP APIを利用します。
-
-```dotenv
-MOJULE_LLM_ENABLED=true
-OPENAI_API_KEY=your-key
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
-```
-
-キーはサーバー側だけで使用し、ブラウザへ送信しません。
-
-LLM接続は明示的なオプトインです。キーが環境に存在するだけでは外部へ送信しません。
-
-## 🧱 構成
-
-- `server/index.ts`: Expressサーバー、`/api/health`と`/api/ask`
-- `server/llm.ts`: OpenAI互換APIとローカルデモの切り替え
-- `client/src/App.tsx`: モジュール一覧とレシピ実行UI
-- `client/src/style.css`: UIデザイン
-
-## 🧪 コマンド
-
-```bash
-pnpm dev
-pnpm check
-pnpm test
-pnpm test:e2e
-pnpm build
-pnpm start
-```
-
-## 本番運用
-
-本番では`pnpm build`後に`NODE_ENV=production pnpm start`を実行します。`GET /api/health`をロードバランサーのヘルスチェックに使用できます。APIは1リクエスト1MB、メッセージ12,000文字、レシピ24ノード、同一IPあたり毎分60回の制限を設けています。コンテナは非rootユーザーで実行されます。
-
-## 設計
 
 現在の標準レシピは次の直列構成です。
 
@@ -63,7 +25,11 @@ input.message → ai.respond → output.markdown
 
 MIT License
 
-## モジュール実行API
+
+## ✨ 機能
+
+### モジュール実行API
+
 
 - `GET /api/modules`: 登録済みManifestと標準レシピを返す
 - `POST /api/run`: `{ "message": "質問" }` を標準レシピで実行する
@@ -71,7 +37,9 @@ MIT License
 
 `server/modules.ts`のレジストリへManifestとハンドラーを追加することで、新しい知識・変換・ツールモジュールを組み込めます。各実行結果にはモジュールごとの入力、出力、実行時間が含まれます。
 
-## レシピ保存API
+
+### レシピ保存API
+
 
 - `GET /api/recipes`: 保存済みレシピ一覧
 - `POST /api/recipes`: レシピを原子的なJSONストアへ保存
@@ -87,7 +55,9 @@ MIT License
 
 ブラウザのRecipe Builderからもレシピ名を付けて保存でき、Saved Recipesから読み込めます。ノードの上下移動、削除、Marketplaceからの追加にも対応しています。
 
-## 実行履歴API
+
+### 実行履歴API
+
 
 - `GET /api/runs`: 最新100件の実行履歴
 - `GET /api/runs?recipeId=my-recipe`: レシピ別履歴
@@ -97,7 +67,9 @@ MIT License
 
 ブラウザのRun Historyから過去の実行を選択すると、実行ID、実行モード、各ステップの処理時間と出力を確認できます。
 
-## 非同期ジョブAPI
+
+### 非同期ジョブAPI
+
 
 - `POST /api/jobs`: レシピをバックグラウンド実行（`202`）
 - `GET /api/jobs`: ジョブ一覧
@@ -110,7 +82,9 @@ MIT License
 
 ジョブには`progress.percent`、`progress.stage`、`progress.message`が含まれます。失敗時は`INVALID_RECIPE`、`UPSTREAM_ERROR`、`CANCELLED`の構造化エラーを返します。
 
-## ローカル認証
+
+### ローカル認証
+
 
 - `POST /api/auth/register`: ユーザーとワークスペースを作成
 - `POST /api/auth/login`: セッションCookieを発行
@@ -120,7 +94,7 @@ MIT License
 
 認証はデフォルトでは任意です。セルフホスト環境で保護を有効にする場合は`AUTH_REQUIRED=true`を設定すると、レシピ・実行（`/api/run`・`/api/ask`を含む）・実行履歴・ジョブAPIにログインが必要になります。パスワードは平文保存せず、scryptハッシュとHttpOnlyセッションCookieを使用します。登録・ログイン・招待受諾は同一IPあたり毎分20回までに制限しています。
 
-### ロール権限
+#### ロール権限
 
 `AUTH_REQUIRED=true`では、操作ごとに以下の権限を適用します。
 
@@ -132,7 +106,7 @@ MIT License
 
 権限不足は`403 FORBIDDEN`、未ログインは`401 AUTH_REQUIRED`として返します。匿名デモモードでは既存互換性のためRBACを適用しません。
 
-### メンバー管理API
+#### メンバー管理API
 
 - `GET /api/workspace/members`: メンバー一覧
 - `POST /api/workspace/invitations`: ownerがeditor／viewerを招待
@@ -142,7 +116,7 @@ MIT License
 
 招待トークンの有効期限は7日です。現在はメール送信サービスを接続していないため、開発環境では招待APIのレスポンスにトークンを返します。本番ではメール配信アダプターへ置き換える前提です。
 
-### APIキー
+#### APIキー
 
 - `POST /api/workspace/api-keys`: ownerがキーを発行
 - `GET /api/workspace/api-keys`: 発行済みキーのメタデータ一覧
@@ -156,18 +130,92 @@ curl -H "Authorization: Bearer mj_..." http://localhost:3000/api/workspace
 
 保存されるのはSHA-256ハッシュのみで、一覧APIから生キーは再表示できません。キーを紛失した場合は失効して再発行してください。
 
-## APIドキュメント
+
+### APIドキュメント
+
 
 - `GET /api/openapi.json`: OpenAPI 3.1仕様
 - `GET /api/docs`: ブラウザで確認できるエンドポイント一覧
 
 OpenAPI仕様には、認証、RBAC、レシピ、実行履歴、非同期ジョブ、SSE進捗、メンバー、APIキーのエンドポイントを収録しています。CLIやSDK生成の入力として利用できます。
 
-## レシピビルダー
+
+### レシピビルダー
+
 
 画面のModule Registryからモジュールを「追加」すると、Recipe Builderへ実行順に追加されます。追加したノードは削除・初期化でき、`text.context`を含むレシピではコンテキストも編集できます。実行時には各ステップのモジュールIDと処理時間を確認できます。
 
-## エコシステム
+
+## 🚀 セットアップ
+
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm dev
+```
+
+`http://localhost:3000` を開いてください。`OPENAI_API_KEY`が空でもローカルデモモードで動作します。
+
+
+### LLM接続
+
+
+OpenAI互換のHTTP APIを利用します。
+
+```dotenv
+MOJULE_LLM_ENABLED=true
+OPENAI_API_KEY=your-key
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_MODEL=gpt-4o-mini
+```
+
+キーはサーバー側だけで使用し、ブラウザへ送信しません。
+
+LLM接続は明示的なオプトインです。キーが環境に存在するだけでは外部へ送信しません。
+
+
+### 本番運用
+
+
+本番では`pnpm build`後に`NODE_ENV=production pnpm start`を実行します。`GET /api/health`をロードバランサーのヘルスチェックに使用できます。APIは1リクエスト1MB、メッセージ12,000文字、レシピ24ノード、同一IPあたり毎分60回の制限を設けています。コンテナは非rootユーザーで実行されます。
+
+
+## 🔨 ビルド
+
+
+```bash
+pnpm dev
+pnpm check
+pnpm test
+pnpm test:e2e
+pnpm build
+pnpm start
+```
+
+
+## 🧪 テスト
+
+
+テスト・Lint・セキュリティ監査・Buildをまとめて実行します。
+
+```sh
+pnpm verify
+```
+
+## 📁 ファイル構成
+
+
+- `server/index.ts`: Expressサーバー、`/api/health`と`/api/ask`
+- `server/llm.ts`: OpenAI互換APIとローカルデモの切り替え
+- `client/src/App.tsx`: モジュール一覧とレシピ実行UI
+- `client/src/style.css`: UIデザイン
+
+
+## 🔗 関連
+
+### エコシステム
+
 
 - [Marketplace](https://github.com/mojuleagent/mojule-marketplace): Manifestカタログと公開方針
 - [CLI](https://github.com/mojuleagent/mojule-cli): `health`、`modules`、`run`コマンド
@@ -175,7 +223,9 @@ OpenAPI仕様には、認証、RBAC、レシピ、実行履歴、非同期ジョ
 
 コアのMarketplace APIは`text.summarize`、`text.keyword-extract`、`knowledge.glossary`を実行可能なサンプルとして登録しています。
 
-## 📚 開発管理文書
+
+### 開発管理文書
+
 
 - [開発ガイド](DEVELOPMENT.md)
 - [貢献ガイド](CONTRIBUTING.md)
@@ -186,10 +236,3 @@ OpenAPI仕様には、認証、RBAC、レシピ、実行履歴、非同期ジョ
 - [ロードマップ](ROADMAP.md)
 - [変更履歴](CHANGELOG.md)
 
-## 🧪 一括検証
-
-テスト・Lint・セキュリティ監査・Buildをまとめて実行します。
-
-```sh
-pnpm verify
-```
