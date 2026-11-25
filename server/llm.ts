@@ -1,3 +1,7 @@
+// ==========================================
+// 🤖 LLM 呼び出し
+// ==========================================
+
 import "dotenv/config";
 
 const enabled = process.env.MOJULE_LLM_ENABLED === "true";
@@ -9,7 +13,7 @@ const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const parsedBaseUrl = new URL(baseUrl);
 if (!["http:", "https:"].includes(parsedBaseUrl.protocol))
   throw new Error("OPENAI_BASE_URL must use http or https");
-// キーが無ければ実際はデモモードで動くため、ヘルスチェック等の表示はこの値で判定する（MOJULE_LLM_ENABLED だけでは「enabled」と誤表示になる）。
+// 📌 キーが無ければ実際はデモモードで動くため、ヘルスチェック等の表示はこの値で判定する（MOJULE_LLM_ENABLED だけでは「enabled」と誤表示になる）。
 export const llmEnabled = enabled && Boolean(apiKey);
 
 export async function answer(

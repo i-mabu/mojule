@@ -1,3 +1,7 @@
+// ==========================================
+// 🖥️ レシピ編集画面
+// ==========================================
+
 import { FormEvent, useEffect, useState } from "react";
 
 type CatalogModule = {
@@ -95,7 +99,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Module Registry は登録済みモジュールの一覧（/api/modules）から一度だけ取得する。Marketplace の検索結果で上書きすると、検索のたびにレジストリまで絞り込まれてしまう。
+  // 🧩 Module Registry は登録済みモジュールの一覧（/api/modules）から一度だけ取得する。Marketplace の検索結果で上書きすると、検索のたびにレジストリまで絞り込まれてしまう。
   useEffect(() => {
     fetch("/api/modules")
       .then((response) => response.json())
@@ -106,7 +110,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 連続入力時は前のリクエストを破棄し、古い検索結果が新しい結果を上書きしないようにする。
+    // 📌 連続入力時は前のリクエストを破棄し、古い検索結果が新しい結果を上書きしないようにする。
     const controller = new AbortController();
     const query = marketQuery ? `?q=${encodeURIComponent(marketQuery)}` : "";
     fetch(`/api/marketplace${query}`, { signal: controller.signal })
@@ -130,7 +134,7 @@ export default function App() {
   }, []);
 
   function addModule(moduleId: string) {
-    // ID の採番は更新関数の中で現在の一覧に対して行う。外側の nodes から数えると、削除→再追加や連続クリックで既存 ID と重複し、サーバーに「node ids must be unique」で拒否される。
+    // 🔑 ID の採番は更新関数の中で現在の一覧に対して行う。外側の nodes から数えると、削除→再追加や連続クリックで既存 ID と重複し、サーバーに「node ids must be unique」で拒否される。
     setNodes((current) => {
       const used = new Set(current.map((node) => node.id));
       let count =
@@ -168,10 +172,12 @@ export default function App() {
   }
   function recipePayload(): SavedRecipe {
     const name = recipeName.trim() || "Untitled recipe";
+    // 🔑 slug 化で情報が落ちる名前は決定的ハッシュを付ける
+    // 別のレシピと同じ ID（例：全て "recipe"）になって黙って上書きされるのを防ぐ。同じ名前なら同じ ID になり、従来どおり更新として保存できる。
     const slug = name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, ""); // 日本語名など slug 化で情報が落ちる名前は決定的ハッシュを付け、別のレシピと同じ ID（例：全て "recipe"）になって黙って上書きされるのを防ぐ。同じ名前なら同じ ID になり、従来どおり更新として保存できる。
+      .replace(/^-|-$/g, "");
     let hash = 0;
     for (const char of name)
       hash = (hash * 31 + (char.codePointAt(0) || 0)) >>> 0;
@@ -218,7 +224,9 @@ export default function App() {
       if (!response.ok)
         throw new Error(data.error?.message || "レシピを読み込めませんでした");
       setRecipeName(data.recipe.name);
-      setNodes(data.recipe.nodes); // text.context の内容も復元する。復元しないと、読み込んだレシピを保存・実行し直した際に recipePayload が初期値のコンテキストで上書きしてしまう。
+      // 💾 text.context の内容も復元する
+      // 復元しないと、読み込んだレシピを保存・実行し直した際に recipePayload が初期値のコンテキストで上書きしてしまう。
+      setNodes(data.recipe.nodes);
       const savedContext = (data.recipe.nodes as RecipeNode[]).find(
         (node) => node.moduleId === "text.context" && node.config?.context,
       )?.config?.context;
@@ -331,7 +339,7 @@ export default function App() {
       const data = (await response.json()) as RunResult & {
         error?: { message?: string };
       };
-      // サーバーのエラーは { error: { code, message } } 形式。data.error 自体を Error に渡すと "[object Object]" と表示されてしまう。
+      // ⚠️ サーバーのエラーは { error: { code, message } } 形式。data.error 自体を Error に渡すと "[object Object]" と表示されてしまう。
       if (!response.ok)
         throw new Error(data.error?.message || "レシピ実行に失敗しました");
       setResult(data);

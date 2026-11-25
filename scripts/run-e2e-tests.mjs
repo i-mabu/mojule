@@ -4,6 +4,9 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+// ==========================================
+// 🖥️ ブラウザE2Eランナー
+// ==========================================
 // ブラウザE2Eランナー: 本番ビルドを起動し、ヘッドレスChromiumで test/e2e.mjs を実行する。
 // Chromeが見つからない環境ではスキップして終了コード0で終わる（CIでは setup-chrome で用意する）。
 const port = process.env.E2E_PORT ?? "3100";
@@ -28,10 +31,10 @@ function resolveChrome() {
       const found = execSync(`command -v ${name}`, { encoding: "utf8" }).trim();
       if (found) return found;
     } catch {
-      // 次の候補へ
+      // 📌 次の候補へ
     }
   }
-  // /opt/meta-chromium/chrome はプラットフォームのブラウザで直接起動できないため候補にしない。
+  // 🖥️ /opt/meta-chromium/chrome はプラットフォームのブラウザで直接起動できないため候補にしない。
   return null;
 }
 
@@ -51,7 +54,7 @@ try {
 
 const dataDir = await mkdtemp(path.join(tmpdir(), "mojule-e2e-data-"));
 const profileDir = await mkdtemp(path.join(tmpdir(), "mojule-e2e-profile-"));
-// Chromeの標準エラー出力はファイルに残し、起動失敗時にログへ出す。
+// 🖥️ Chromeの標準エラー出力はファイルに残し、起動失敗時にログへ出す。
 const chromeLogPath = path.join(dataDir, "chrome.log");
 const chromeLogStream = createWriteStream(chromeLogPath);
 const command = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -96,14 +99,14 @@ const browser = spawn(
 );
 browser.stderr.pipe(chromeLogStream);
 
-// CIの冷えた環境では初回起動が遅いため、待ち時間は長めに取る（250ms × 回数）。
+// ⏳ CIの冷えた環境では初回起動が遅いため、待ち時間は長めに取る（250ms × 回数）。
 async function waitFor(url, label, attempts = 120) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url);
       if (response.ok) return;
     } catch {
-      // 起動待ち
+      // ⏳ 起動待ち
     }
     await sleep(250);
   }
@@ -126,7 +129,7 @@ try {
           `--- Chrome stderr (${chromeLogPath}) ---\n${log.slice(-4000)}`,
         );
     } catch {
-      // ログが読めなくても元のエラーをそのまま出す
+      // ⚠️ ログが読めなくても元のエラーをそのまま出す
     }
     throw error;
   }

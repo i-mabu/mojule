@@ -1,3 +1,7 @@
+// ==========================================
+// 🏪 マーケットプレイスのカタログ
+// ==========================================
+
 import type { MarketplaceModule } from "../shared/marketplace";
 
 const catalog: MarketplaceModule[] = [

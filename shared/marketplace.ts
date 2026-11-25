@@ -1,3 +1,7 @@
+// ==========================================
+// 🏪 マーケットプレイス型定義
+// ==========================================
+
 import type { ModuleCategory, ModulePort } from "./module";
 
 export type MarketplaceModule = {

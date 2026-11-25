@@ -1,3 +1,7 @@
+// ==========================================
+// 🔐 認証・セッション管理
+// ==========================================
+
 import {
   randomBytes,
   randomUUID,
@@ -155,9 +159,11 @@ export const auth = {
   login: (email: string, password: string) =>
     serialized(async () => {
       const data = await readData();
+      // 🔐 未登録でもダミー salt でハッシュ計算する
+      // 応答時間から登録有無を推測させない。保存済みハッシュの長さが壊れていても timingSafeEqual の例外で 500 にしない。
       const user = data.users.find(
         (item) => item.email === email.trim().toLowerCase(),
-      ); // ユーザーが存在しない場合もダミーの salt でハッシュ計算を行い、応答時間から登録有無を推測できないようにする。保存済みハッシュの長さが壊れていても timingSafeEqual の例外で 500 にしない。
+      );
       const expected = user
         ? Buffer.from(user.passwordHash, "hex")
         : Buffer.alloc(64);
@@ -172,7 +178,7 @@ export const auth = {
       await writeData(data);
       return { user: publicUser(user), token };
     }),
-  // 読み取り専用の照会は直列化キューを通さない。書き込みは rename で原子的であり、古い版か新しい版のどちらか完全なファイルを読むため安全。キューを通すと scrypt 実行中のログイン等が全リクエストの認証を止めてしまう。
+  // 📋 読み取り専用の照会は直列化キューを通さない。書き込みは rename で原子的であり、古い版か新しい版のどちらか完全なファイルを読むため安全。キューを通すと scrypt 実行中のログイン等が全リクエストの認証を止めてしまう。
   userFromToken: async (token?: string) => {
     if (!token) return null;
     const data = await readData();
@@ -276,7 +282,9 @@ export const auth = {
       const user = data.users.find(
         (item) => item.id === userId && item.workspaceId === workspaceId,
       );
-      if (!user) return null; // owner を降格できるとワークスペースから owner が消え、招待・APIキー・削除などの管理操作が誰にもできなくなるため拒否する（メンバー削除側の owner ガードと対にする）。
+      // 🔐 owner の降格は拒否する
+      // 降格できるとワークスペースから owner が消え、招待・APIキー・削除などの管理操作が誰にもできなくなる（メンバー削除側の owner ガードと対にする）。
+      if (!user) return null;
       if (user.role === "owner") throw new Error("OWNER_ROLE_CANNOT_CHANGE");
       user.role = role;
       await writeData(data);
@@ -338,7 +346,9 @@ export const auth = {
     const user = data.users.find(
       (item) => item.workspaceId === key.workspaceId,
     );
-    if (!user) return null; // lastUsedAt の更新で毎リクエスト auth.json を全書き換えしない。1時間以上古い場合だけ、最新データを読み直してから直列化して更新する（並行する登録・失効を上書きしないため再読込する）。
+    // 💾 lastUsedAt の更新は1時間以上古い場合だけ行う
+    // 毎リクエスト auth.json を全書き換えしない。最新データを読み直してから直列化して更新する（並行する登録・失効を上書きしないため再読込する）。
+    if (!user) return null;
     if (
       !key.lastUsedAt ||
       Date.now() - new Date(key.lastUsedAt).getTime() > 60 * 60 * 1000

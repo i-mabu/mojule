@@ -1,3 +1,7 @@
+// ==========================================
+// 🧩 モジュール実行
+// ==========================================
+
 import type {
   ModuleManifest,
   ModuleStep,
@@ -107,7 +111,7 @@ const registry: RegisteredModule[] = [
       outputs: [{ name: "summary", type: "text", description: "要約" }],
     },
     run: async (input) => {
-      // 元の句読点を保持して先頭2文を取る（split+join("。") だと英語の "." が "。" に化け、終端の句読点も消えていた）。
+      // 📝 元の句読点を保持して先頭2文を取る（split+join("。") だと英語の "." が "。" に化け、終端の句読点も消えていた）。
       const sentences =
         text(input.text)
           .match(/[^。.!?！？]+[。.!?！？]?/g)
@@ -133,7 +137,7 @@ const registry: RegisteredModule[] = [
       outputs: [{ name: "keywords", type: "text", description: "キーワード" }],
     },
     run: async (input) => {
-      // 語尾の句読点を除き、重複（大文字小文字違い含む）を除いてから先頭8件を取る。
+      // 🔑 語尾の句読点を除き、重複（大文字小文字違い含む）を除いてから先頭8件を取る。
       const seen = new Set<string>();
       const words: string[] = [];
       for (const raw of text(input.text).split(/\s+/)) {

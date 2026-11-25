@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 
+// ==========================================
+// 🖥️ ブラウザE2Eテスト
+// ==========================================
 // ブラウザE2E: 本番ビルドを起動したサーバーへヘッドレスChromiumで接続し、
 // 画面の描画からレシピ実行・保存までの一連の流れを検証する。
 // サーバーとブラウザの起動は scripts/run-e2e-tests.mjs が行う。
@@ -43,7 +46,7 @@ async function waitFor(expression, timeoutMs = 15000) {
     try {
       if (await evaluate(expression)) return;
     } catch {
-      // ページ遷移直後は document.body がまだ null などで評価が失敗する。
+      // ⚠️ ページ遷移直後は document.body がまだ null などで評価が失敗する。
       // 一時的な状態なので、タイムアウトまで待ってから失敗にする。
     }
     await sleep(200);

@@ -1,3 +1,7 @@
+// ==========================================
+// 📜 実行履歴
+// ==========================================
+
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -37,7 +41,7 @@ function serialized<T>(operation: () => Promise<T>): Promise<T> {
   return next;
 }
 export const runs = {
-  // 読み取りは直列化しない（書き込みは rename で原子的であり、読み取り同士や遅い書き込みに巻き込まれる必要がない）。
+  // 💾 読み取りは直列化しない（書き込みは rename で原子的であり、読み取り同士や遅い書き込みに巻き込まれる必要がない）。
   list: async (recipeId?: string) => {
     const records = await readAll();
     return records

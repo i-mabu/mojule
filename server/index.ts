@@ -1,3 +1,7 @@
+// ==========================================
+// 🚀 API サーバー
+// ==========================================
+
 import "dotenv/config";
 import express, {
   type NextFunction,
@@ -42,7 +46,7 @@ const authCounts = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 60;
 const AUTH_RATE_LIMIT = 20;
 const RATE_WINDOW_MS = 60_000;
-// 期限切れバケットを定期的に掃除する（従来は同一IPが再訪するまで残り続け、IP数が増えるほどマップが肥大化していた）。
+// 🧹 期限切れバケットを定期的に掃除する（従来は同一IPが再訪するまで残り続け、IP数が増えるほどマップが肥大化していた）。
 const rateLimitSweep = setInterval(() => {
   const now = Date.now();
   for (const store of [requestCounts, authCounts])
@@ -109,7 +113,7 @@ function rateLimit(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// 認証情報の試行（登録・ログイン・招待受諾）は総当たり対策として通常APIより厳しく制限する。
+// 🔐 認証情報の試行（登録・ログイン・招待受諾）は総当たり対策として通常APIより厳しく制限する。
 function authRateLimit(req: Request, res: Response, next: NextFunction) {
   const count = consumeLimit(authCounts, req.ip || "unknown");
   if (count > AUTH_RATE_LIMIT)
@@ -200,7 +204,7 @@ async function executeAndRecord(
     message: "モジュールを実行しています",
   });
   const result = await executeRecipe(recipe, { text: message }, signal);
-  // キャンセル済みなら実行履歴に残さない（中断された実行が通常の履歴として残ると履歴が汚染される）。
+  // 📜 キャンセル済みなら実行履歴に残さない（中断された実行が通常の履歴として残ると履歴が汚染される）。
   if (signal?.aborted) throw new Error("Job cancelled");
   progress?.({
     percent: 90,
@@ -211,6 +215,9 @@ async function executeAndRecord(
   return { ...result, runId: record.id, createdAt: record.createdAt };
 }
 
+// ------------------------------------------
+// 💚 ヘルスチェック・仕様書
+// ------------------------------------------
 app.get("/api/health", (_req, res) =>
   res.json({
     status: "ok",
@@ -235,6 +242,9 @@ app.get("/api/docs", (_req, res) => {
       `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>mojuleagent API docs</title><style>body{font-family:system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#18211b}h1{font-size:32px}code{background:#edf3e8;padding:3px 6px;border-radius:5px;font-size:12px}li{list-style:none;padding:9px;border-bottom:1px solid #e5ebe4}li code{display:inline-block;width:54px;text-align:center}a{color:#687e00}</style></head><body><h1>mojuleagent API</h1><p>OpenAPI 3.1 contract and endpoint index.</p><p><a href="/api/openapi.json">Download openapi.json</a></p><ul>${paths}</ul></body></html>`,
     );
 });
+// ------------------------------------------
+// 🔐 認証 API
+// ------------------------------------------
 app.post("/api/auth/register", authRateLimit, async (req, res, next) => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success)
@@ -359,9 +369,14 @@ app.post("/api/auth/accept-invite", authRateLimit, async (req, res, next) => {
 app.get("/api/auth/me", (_req, res) =>
   res.json({ user: (res.locals.user as User | null) || null }),
 );
+// ------------------------------------------
+// 👥 ワークスペース API
+// ------------------------------------------
 app.get("/api/workspace", requireUser, async (_req, res, next) => {
   try {
-    const user = res.locals.user as User; // ワークスペース名は保存済みの実名を返す（閲覧者自身の名前から組み立てると、招待されたメンバーには別名に見えていた）。
+    // 👥 ワークスペース名は保存済みの実名を返す
+    // 閲覧者自身の名前から組み立てると、招待されたメンバーには別名に見えていた。
+    const user = res.locals.user as User;
     const workspace = await auth.workspace(user.workspaceId);
     res.json({
       workspace: {
@@ -406,12 +421,14 @@ app.post(
         });
     try {
       const user = res.locals.user as User;
+      // 🔐 招待トークンは開発環境でのみレスポンスに含める
+      // README の前提どおり。本番ではメール配信アダプター経由で渡すため、生トークンを API レスポンスやログに残さない。
       const invitation = await auth.invite(
         user.workspaceId,
         parsed.data.email,
         parsed.data.name,
         parsed.data.role,
-      ); // 招待トークンは開発環境でのみレスポンスに含める（README の前提どおり）。本番ではメール配信アダプター経由で渡すため、生トークンを API レスポンスやログに残さない。
+      );
       res
         .status(201)
         .json({
@@ -596,6 +613,9 @@ app.delete(
     }
   },
 );
+// ------------------------------------------
+// 🧩 モジュール・マーケットプレイス
+// ------------------------------------------
 app.get("/api/modules", (_req, res) =>
   res.json({ modules: listModules(), recipe: defaultRecipe }),
 );
@@ -607,6 +627,9 @@ app.get("/api/marketplace", (req, res) =>
     ),
   }),
 );
+// ------------------------------------------
+// 📖 レシピ・実行・ジョブ API
+// ------------------------------------------
 app.use(["/api/recipes", "/api/runs", "/api/jobs"], authRequired);
 app.post("/api/recipes/validate", (req, res) => {
   const parsed = recipeSaveSchema.safeParse(req.body);
@@ -919,7 +942,7 @@ app.post("/api/recipes/:id/run", rateLimit, async (req, res, next) => {
     next(error);
   }
 });
-// /api/run と /api/ask も実行系APIであり、AUTH_REQUIRED=true では認証対象に含める（従来は対象外で、未ログインでも LLM 実行と履歴書き込みができていた）。
+// 🔐 /api/run と /api/ask も実行系APIであり、AUTH_REQUIRED=true では認証対象に含める（従来は対象外で、未ログインでも LLM 実行と履歴書き込みができていた）。
 app.post("/api/run", authRequired, rateLimit, async (req, res, next) => {
   const parsed = validateRun(req, res);
   if (!parsed) return;
@@ -948,7 +971,7 @@ app.post("/api/ask", authRequired, rateLimit, async (req, res, next) => {
   }
 });
 
-// 未定義の /api/* は SPA フォールバックや Vite に渡さず、JSON の 404 を返す（従来は本番・開発とも HTML の index が 200 で返り、API クライアントが判別できなかった）。
+// 📡 未定義の /api/* は SPA フォールバックや Vite に渡さず、JSON の 404 を返す（従来は本番・開発とも HTML の index が 200 で返り、API クライアントが判別できなかった）。
 app.use("/api", (_req, res) =>
   res
     .status(404)
@@ -978,7 +1001,7 @@ if (process.env.NODE_ENV !== "production") {
 app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message =
     error instanceof Error ? error.message : "サーバーエラーが発生しました";
-  // express.json 等が付けた HTTP ステータス（不正な JSON の 400、サイズ超過の 413）はそのまま尊重する。従来は全て 502 UPSTREAM_ERROR になり、クライアント起因のエラーを判別できなかった。
+  // ⚠️ express.json 等が付けた HTTP ステータス（不正な JSON の 400、サイズ超過の 413）はそのまま尊重する。従来は全て 502 UPSTREAM_ERROR になり、クライアント起因のエラーを判別できなかった。
   const carried = (error as { status?: unknown } | null)?.status;
   if (typeof carried === "number" && carried >= 400 && carried < 500)
     return res
@@ -993,7 +1016,7 @@ app.use((error: unknown, _req: Request, res: Response, _next: NextFunction) => {
         },
         requestId: res.locals.requestId,
       });
-  // executeRecipe の検証エラーは "Invalid recipe: ..." で始まる。従来の "Unknown module" 判定だけでは到達不能で、不正なレシピも 502 になっていた。
+  // ⚠️ executeRecipe の検証エラーは "Invalid recipe: ..." で始まる。従来の "Unknown module" 判定だけでは到達不能で、不正なレシピも 502 になっていた。
   const status =
     message.startsWith("Unknown module") || message.startsWith("Invalid recipe")
       ? 400

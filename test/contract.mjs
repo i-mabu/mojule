@@ -5,6 +5,9 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+// ==========================================
+// 📜 API契約テスト
+// ==========================================
 // API契約テスト: /api/openapi.json の仕様と実際のサーバー動作が一致することを検証する。
 // 実行は scripts/run-smoke-tests.mjs がサーバーを起動してから行う。
 const base = `http://127.0.0.1:${process.env.PORT ?? "3000"}`;
@@ -62,7 +65,7 @@ function resolveRef(spec, ref) {
   return current;
 }
 
-// Expressの未定義ルートは text/html の "Cannot GET ..." を返す。
+// 📌 Expressの未定義ルートは text/html の "Cannot GET ..." を返す。
 // ハンドラーが返した404はJSONのエラー封筒になるため、両者を区別できる。
 function assertRouteExists(result) {
   const contentType = result.headers.get("content-type") || "";
@@ -126,7 +129,7 @@ test("openapi document is structurally valid and every $ref resolves", async () 
   }
 });
 
-// 仕様に載っている全操作を実際に叩き、ルートが存在することと
+// 📌 仕様に載っている全操作を実際に叩き、ルートが存在することと
 // 期待するステータスが返ることを確認する。プローブが無い操作が
 // 仕様に追加された場合はこのテストが失敗して気付ける。
 const probes = {
@@ -335,7 +338,7 @@ const probes = {
   },
   "post /api/jobs/{id}/retry": async () => {
     const jobId = await createJob();
-    // 再実行は終了済みジョブだけが対象なので、完了を待ってから叩く（実行中の再実行は 409）。
+    // 📋 再実行は終了済みジョブだけが対象なので、完了を待ってから叩く（実行中の再実行は 409）。
     for (let attempt = 0; attempt < 40; attempt += 1) {
       const job = (await call(`/api/jobs/${jobId}`)).body.job;
       if (
@@ -502,7 +505,7 @@ test("recipe validation rejects unknown modules and duplicate node ids", async (
   assert.equal(duplicate.body.error.code, "INVALID_RECIPE");
 });
 
-// AUTH_REQUIRED=true のサーバーを別ポートで起動し、認証・RBACの境界を検証する。
+// 🔐 AUTH_REQUIRED=true のサーバーを別ポートで起動し、認証・RBACの境界を検証する。
 // データファイルは一時ディレクトリに分離し、メインのサーバーと干渉させない。
 describe("auth boundaries with AUTH_REQUIRED=true", () => {
   const authPort = "3001";
@@ -551,13 +554,13 @@ describe("auth boundaries with AUTH_REQUIRED=true", () => {
           AUTH_FILE: path.join(dataDir, "auth.json"),
         },
         windowsHide: true,
-        // tsxはラッパーが子プロセスを起動するため、SIGTERMだけでは子が残る。
+        // 🚀 tsxはラッパーが子プロセスを起動するため、SIGTERMだけでは子が残る。
         // プロセスグループごと終了させて取り残しを防ぐ（Windowsでは個別に終了）。
         detached: process.platform !== "win32",
       },
     );
     let ready = false;
-    // CIの冷えた環境では初回起動が遅いため、待ち時間は長めに取る（250ms × 120回＝30秒）。
+    // ⏳ CIの冷えた環境では初回起動が遅いため、待ち時間は長めに取る（250ms × 120回＝30秒）。
     for (let attempt = 0; attempt < 120; attempt += 1) {
       try {
         const response = await fetch(`${authBase}/api/health`);
@@ -566,7 +569,7 @@ describe("auth boundaries with AUTH_REQUIRED=true", () => {
           break;
         }
       } catch {
-        // 起動待ち
+        // ⏳ 起動待ち
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
     }

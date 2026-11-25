@@ -1,3 +1,7 @@
+// ==========================================
+// 📋 非同期ジョブ管理
+// ==========================================
+
 import { randomUUID } from "node:crypto";
 import type { Recipe, RecipeResult } from "../shared/module";
 
@@ -59,7 +63,7 @@ function update(job: JobRecord, patch: Partial<JobRecord>) {
 }
 function trim() {
   while (store.size > MAX_JOBS) {
-    // 実行中・待機中のジョブを消すと結果が失われ取得もキャンセルもできなくなるため、終了済みだけを古い順に消す。終了済みが無ければ上限を超えたまま保持する。
+    // 🧹 実行中・待機中のジョブを消すと結果が失われ取得もキャンセルもできなくなるため、終了済みだけを古い順に消す。終了済みが無ければ上限を超えたまま保持する。
     const oldest = [...store.values()]
       .filter(
         (job) =>
@@ -193,7 +197,7 @@ export const jobs = {
           finishedAt: new Date().toISOString(),
         });
       else {
-        // 実行中は AbortSignal で LLM 呼び出し等を実際に中断する（従来は完了まで走り、実行履歴にも残っていた）。
+        // ⏹️ 実行中は AbortSignal で LLM 呼び出し等を実際に中断する（従来は完了まで走り、実行履歴にも残っていた）。
         controllers.get(id)?.abort();
         emit(job);
       }
@@ -202,7 +206,9 @@ export const jobs = {
   },
   retry(id: string, runner: Runner) {
     const job = store.get(id);
-    if (!job) return null; // 再実行は終了済みジョブだけが対象（README の仕様どおり）。実行中・待機中を再投入すると同じレシピが二重に実行され、履歴も二重に残る。
+    // 📋 再実行は終了済みジョブだけが対象
+    // README の仕様どおり。実行中・待機中を再投入すると同じレシピが二重に実行され、履歴も二重に残る。
+    if (!job) return null;
     if (job.status === "queued" || job.status === "running") return null;
     return jobs.enqueue(job.recipe, job.message, runner);
   },
